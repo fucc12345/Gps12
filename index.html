@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Live GPS Speed & Location Tracker</title>
+  <title>GPS Speed & Destination Alarm</title>
   <style>
     body {
       margin: 0;
       font-family: 'Segoe UI', sans-serif;
       background: #0e0e0e;
-      color: #ffffff;
+      color: #fff;
       padding: 20px;
     }
 
@@ -25,35 +25,6 @@
       padding: 20px;
       margin: 20px 0;
       box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
-      position: relative;
-      overflow: hidden;
-    }
-
-    .ripple {
-      position: relative;
-      overflow: hidden;
-    }
-
-    .ripple:after {
-      content: '';
-      display: block;
-      position: absolute;
-      border-radius: 50%;
-      width: 100px;
-      height: 100px;
-      top: 50%;
-      left: 50%;
-      pointer-events: none;
-      transform: translate(-50%, -50%) scale(0);
-      background-color: rgba(255, 255, 255, 0.2);
-      animation: ripple 0.6s linear;
-    }
-
-    @keyframes ripple {
-      to {
-        transform: translate(-50%, -50%) scale(3);
-        opacity: 0;
-      }
     }
 
     .info {
@@ -61,15 +32,21 @@
       margin: 10px 0;
     }
 
-    select, input {
+    label {
+      margin-top: 10px;
+      display: block;
+      font-size: 0.9rem;
+    }
+
+    input, select {
       width: 100%;
       padding: 12px;
+      margin-top: 5px;
       font-size: 1rem;
       border-radius: 10px;
       border: none;
       background-color: #2c2c2c;
       color: #fff;
-      margin-top: 10px;
     }
 
     button {
@@ -105,7 +82,7 @@
 
   <h1>GPS Speed & Location Tracker</h1>
 
-  <div class="card ripple">
+  <div class="card">
     <div class="info">Speed: <span id="speed" class="highlight">0</span> <span id="unit">km/h</span></div>
     <div class="info">Latitude: <span id="latitude" class="highlight">0.000000</span></div>
     <div class="info">Longitude: <span id="longitude" class="highlight">0.000000</span></div>
@@ -120,6 +97,29 @@
     <div class="status" id="statusText">Waiting for GPS signal...</div>
   </div>
 
+  <div class="card">
+    <h3>⏰ Destination Alarm</h3>
+    <label>Destination Latitude:</label>
+    <input type="number" step="any" id="destLat" placeholder="e.g. 14.4426" />
+
+    <label>Destination Longitude:</label>
+    <input type="number" step="any" id="destLong" placeholder="e.g. 79.9865" />
+
+    <label>Alert Before (value):</label>
+    <input type="number" id="alertTime" placeholder="e.g. 30" />
+
+    <select id="alertUnit">
+      <option value="sec">Seconds</option>
+      <option value="min">Minutes</option>
+      <option value="hr">Hours</option>
+    </select>
+
+    <button onclick="activateAlarm()">Activate Alarm</button>
+    <div class="status" id="alarmStatus">Alarm not set.</div>
+  </div>
+
+  <audio id="alarmSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto"></audio>
+
   <script>
     const speedEl = document.getElementById("speed");
     const unitEl = document.getElementById("unit");
@@ -128,15 +128,22 @@
     const statusEl = document.getElementById("statusText");
     const unitSelect = document.getElementById("unitSelect");
 
-    let currentSpeed = 0;
+    const alarmStatusEl = document.getElementById("alarmStatus");
+    const alarmSound = document.getElementById("alarmSound");
 
-    unitSelect.addEventListener('change', () => {
-      updateSpeedDisplay(currentSpeed);
-    });
+    let currentSpeed = 0;
+    let currentLat = 0;
+    let currentLong = 0;
+    let alarmActive = false;
+    let destination = null;
+    let alertSeconds = 0;
+    let alarmTriggered = false;
+
+    unitSelect.addEventListener('change', () => updateSpeedDisplay(currentSpeed));
 
     function updateSpeedDisplay(speedMS) {
       const unit = unitSelect.value;
-      let displaySpeed;
+      let displaySpeed = 0;
 
       if (unit === "kmh") {
         displaySpeed = (speedMS * 3.6).toFixed(2);
@@ -152,25 +159,58 @@
       speedEl.textContent = isNaN(displaySpeed) ? "0" : displaySpeed;
     }
 
+    function activateAlarm() {
+      const lat = parseFloat(document.getElementById("destLat").value);
+      const lng = parseFloat(document.getElementById("destLong").value);
+      const timeVal = parseFloat(document.getElementById("alertTime").value);
+      const timeUnit = document.getElementById("alertUnit").value;
+
+      if (isNaN(lat) || isNaN(lng) || isNaN(timeVal)) {
+        alert("Please enter valid destination and time.");
+        return;
+      }
+
+      alertSeconds = timeUnit === 'min' ? timeVal * 60 :
+                     timeUnit === 'hr' ? timeVal * 3600 : timeVal;
+
+      destination = { lat, lng };
+      alarmActive = true;
+      alarmTriggered = false;
+      alarmStatusEl.textContent = "🚨 Alarm is active. You will be notified before arrival.";
+    }
+
     function startGPS() {
       if (!navigator.geolocation) {
-        statusEl.textContent = "Geolocation not supported by your device.";
+        statusEl.textContent = "Geolocation not supported.";
         return;
       }
 
       navigator.geolocation.watchPosition(
-        (position) => {
-          statusEl.textContent = "Tracking GPS...";
-          const coords = position.coords;
+        (pos) => {
+          const coords = pos.coords;
 
+          currentLat = coords.latitude;
+          currentLong = coords.longitude;
           currentSpeed = coords.speed ?? 0;
-          updateSpeedDisplay(currentSpeed);
 
-          latEl.textContent = coords.latitude.toFixed(6);
-          longEl.textContent = coords.longitude.toFixed(6);
+          latEl.textContent = currentLat.toFixed(6);
+          longEl.textContent = currentLong.toFixed(6);
+          updateSpeedDisplay(currentSpeed);
+          statusEl.textContent = "Tracking...";
+
+          if (alarmActive && !alarmTriggered && currentSpeed > 0) {
+            const distance = getDistance(currentLat, currentLong, destination.lat, destination.lng);
+            const etaSeconds = distance / currentSpeed;
+
+            if (etaSeconds <= alertSeconds) {
+              alarmSound.play();
+              alarmTriggered = true;
+              alarmStatusEl.textContent = `✅ Alarm Triggered! ETA: ${Math.round(etaSeconds)}s`;
+            }
+          }
         },
-        (error) => {
-          statusEl.textContent = "Error: " + error.message;
+        (err) => {
+          statusEl.textContent = "Error: " + err.message;
         },
         {
           enableHighAccuracy: true,
@@ -180,8 +220,22 @@
       );
     }
 
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const dLat = deg2rad(lat2 - lat1);
+      const dLon = deg2rad(lon2 - lon1);
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function deg2rad(deg) {
+      return deg * (Math.PI / 180);
+    }
+
     startGPS();
   </script>
-
 </body>
 </html>
