@@ -1,1 +1,187 @@
-<!DOCTYPE html><html lang="en"><head>  <meta charset="UTF-8" />  <meta name="viewport" content="width=device-width, initial-scale=1.0" />  <title>Speed & Proximity Tracker</title>  <style>    body {      margin: 0;      font-family: 'Segoe UI', sans-serif;      background: #121212;      color: #fff;      padding: 20px;      display: flex;      flex-direction: column;      gap: 20px;    }    h1 {      text-align: center;      color: #00e676;    }    .card {      background: #1e1e1e;      padding: 20px;      border-radius: 15px;      box-shadow: 0 5px 15px rgba(0,0,0,0.3);      position: relative;      overflow: hidden;    }    .card:active::after {      animation: ripple 0.6s linear;    }    @keyframes ripple {      to {        transform: scale(4);        opacity: 0;      }    }    label {      font-size: 14px;      margin-top: 8px;      display: block;    }    input, select {      width: 100%;      padding: 10px;      border-radius: 8px;      border: none;      margin-top: 4px;      font-size: 16px;      background: #2c2c2c;      color: #fff;    }    button {      padding: 12px;      width: 100%;      border: none;      background: #00e676;      color: #000;      font-weight: bold;      font-size: 16px;      border-radius: 10px;      cursor: pointer;    }    #status {      text-align: center;      font-size: 1.2em;      color: #00e676;    }  </style></head><body>  <h1>GPS Speed & Proximity Tracker</h1>  <div class="card">    <div id="status">Initializing...</div>    <div>Speed: <span id="speed">0</span> <span id="unit">km/h</span></div>    <div>Latitude: <span id="lat">0</span></div>    <div>Longitude: <span id="long">0</span></div>    <label for="unitSelect">Select Speed Unit:</label>    <select id="unitSelect">      <option value="kmh">km/h</option>      <option value="ms">m/s</option>      <option value="mph">mph</option>    </select>  </div>  <div class="card">    <label>Destination Latitude:</label>    <input type="number" step="any" id="destLat" placeholder="e.g. 14.4426" />        <label>Destination Longitude:</label>    <input type="number" step="any" id="destLong" placeholder="e.g. 79.9865" />        <label>Alert Time Before Arrival:</label>    <input type="number" id="alertTime" placeholder="e.g. 5" />        <select id="alertUnit">      <option value="sec">Seconds</option>      <option value="min">Minutes</option>      <option value="hr">Hours</option>    </select>    <button onclick="startTracking()">Start Tracking</button>  </div>  <audio id="alertSound" src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" preload="auto"></audio>  <script>    let currentLat = 0, currentLong = 0, currentSpeed = 0;    let watchId = null;    let alertPlayed = false;    const speedDisplay = document.getElementById("speed");    const latDisplay = document.getElementById("lat");    const longDisplay = document.getElementById("long");    const unitDisplay = document.getElementById("unit");    const unitSelect = document.getElementById("unitSelect");    const alertSound = document.getElementById("alertSound");    const status = document.getElementById("status");    unitSelect.addEventListener('change', updateDisplay);    function updateDisplay() {      let unit = unitSelect.value;      unitDisplay.textContent = unit === 'kmh' ? 'km/h' : (unit === 'ms' ? 'm/s' : 'mph');      let speedInMS = currentSpeed;      let displaySpeed = 0;      if (unit === 'kmh') displaySpeed = (speedInMS * 3.6).toFixed(2);      else if (unit === 'mph') displaySpeed = (speedInMS * 2.23694).toFixed(2);      else displaySpeed = speedInMS.toFixed(2);      speedDisplay.textContent = displaySpeed;    }    function startTracking() {      const destLat = parseFloat(document.getElementById("destLat").value);      const destLong = parseFloat(document.getElementById("destLong").value);      const alertTime = parseFloat(document.getElementById("alertTime").value);      const alertUnit = document.getElementById("alertUnit").value;      if (isNaN(destLat) || isNaN(destLong) || isNaN(alertTime)) {        alert("Please enter valid destination and alert time.");        return;      }      const alertSeconds = alertUnit === 'min' ? alertTime * 60 :                           alertUnit === 'hr' ? alertTime * 3600 : alertTime;      alertPlayed = false;      if (watchId) navigator.geolocation.clearWatch(watchId);      watchId = navigator.geolocation.watchPosition(        (pos) => {          status.textContent = "Tracking...";          currentLat = pos.coords.latitude;          currentLong = pos.coords.longitude;          currentSpeed = pos.coords.speed || 0;          latDisplay.textContent = currentLat.toFixed(6);          longDisplay.textContent = currentLong.toFixed(6);          updateDisplay();          const distance = getDistanceFromLatLonInMeters(currentLat, currentLong, destLat, destLong);          const etaSeconds = currentSpeed > 0 ? distance / currentSpeed : Infinity;          if (etaSeconds <= alertSeconds && !alertPlayed) {            alertSound.play();            alertPlayed = true;            status.textContent = `🚨 Approaching destination! ETA: ${Math.round(etaSeconds)}s`;          }        },        (err) => {          status.textContent = "GPS Error: " + err.message;        },        {          enableHighAccuracy: true,          maximumAge: 1000,          timeout: 10000        }      );    }    function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {      const R = 6371000; // Earth radius in meters      const dLat = deg2rad(lat2 - lat1);      const dLon = deg2rad(lon2 - lon1);      const a =        Math.sin(dLat / 2) * Math.sin(dLat / 2) +        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *        Math.sin(dLon / 2) * Math.sin(dLon / 2);      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));      return R * c;    }    function deg2rad(deg) {      return deg * (Math.PI / 180);    }  </script></body></html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live GPS Speed & Location Tracker</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: #0e0e0e;
+      color: #ffffff;
+      padding: 20px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 1.8rem;
+      color: #00e676;
+    }
+
+    .card {
+      background: #1c1c1c;
+      border-radius: 16px;
+      padding: 20px;
+      margin: 20px 0;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.4);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ripple {
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ripple:after {
+      content: '';
+      display: block;
+      position: absolute;
+      border-radius: 50%;
+      width: 100px;
+      height: 100px;
+      top: 50%;
+      left: 50%;
+      pointer-events: none;
+      transform: translate(-50%, -50%) scale(0);
+      background-color: rgba(255, 255, 255, 0.2);
+      animation: ripple 0.6s linear;
+    }
+
+    @keyframes ripple {
+      to {
+        transform: translate(-50%, -50%) scale(3);
+        opacity: 0;
+      }
+    }
+
+    .info {
+      font-size: 1.2rem;
+      margin: 10px 0;
+    }
+
+    select, input {
+      width: 100%;
+      padding: 12px;
+      font-size: 1rem;
+      border-radius: 10px;
+      border: none;
+      background-color: #2c2c2c;
+      color: #fff;
+      margin-top: 10px;
+    }
+
+    button {
+      margin-top: 15px;
+      padding: 12px;
+      width: 100%;
+      background: #00e676;
+      color: #000;
+      font-weight: bold;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .status {
+      text-align: center;
+      margin-top: 15px;
+      font-size: 1rem;
+      color: #aaa;
+    }
+
+    .highlight {
+      color: #00ffc8;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>GPS Speed & Location Tracker</h1>
+
+  <div class="card ripple">
+    <div class="info">Speed: <span id="speed" class="highlight">0</span> <span id="unit">km/h</span></div>
+    <div class="info">Latitude: <span id="latitude" class="highlight">0.000000</span></div>
+    <div class="info">Longitude: <span id="longitude" class="highlight">0.000000</span></div>
+
+    <label for="unitSelect">Change Speed Unit:</label>
+    <select id="unitSelect">
+      <option value="kmh">km/h</option>
+      <option value="ms">m/s</option>
+      <option value="mph">mph</option>
+    </select>
+
+    <div class="status" id="statusText">Waiting for GPS signal...</div>
+  </div>
+
+  <script>
+    const speedEl = document.getElementById("speed");
+    const unitEl = document.getElementById("unit");
+    const latEl = document.getElementById("latitude");
+    const longEl = document.getElementById("longitude");
+    const statusEl = document.getElementById("statusText");
+    const unitSelect = document.getElementById("unitSelect");
+
+    let currentSpeed = 0;
+
+    unitSelect.addEventListener('change', () => {
+      updateSpeedDisplay(currentSpeed);
+    });
+
+    function updateSpeedDisplay(speedMS) {
+      const unit = unitSelect.value;
+      let displaySpeed;
+
+      if (unit === "kmh") {
+        displaySpeed = (speedMS * 3.6).toFixed(2);
+        unitEl.textContent = "km/h";
+      } else if (unit === "mph") {
+        displaySpeed = (speedMS * 2.23694).toFixed(2);
+        unitEl.textContent = "mph";
+      } else {
+        displaySpeed = speedMS.toFixed(2);
+        unitEl.textContent = "m/s";
+      }
+
+      speedEl.textContent = isNaN(displaySpeed) ? "0" : displaySpeed;
+    }
+
+    function startGPS() {
+      if (!navigator.geolocation) {
+        statusEl.textContent = "Geolocation not supported by your device.";
+        return;
+      }
+
+      navigator.geolocation.watchPosition(
+        (position) => {
+          statusEl.textContent = "Tracking GPS...";
+          const coords = position.coords;
+
+          currentSpeed = coords.speed ?? 0;
+          updateSpeedDisplay(currentSpeed);
+
+          latEl.textContent = coords.latitude.toFixed(6);
+          longEl.textContent = coords.longitude.toFixed(6);
+        },
+        (error) => {
+          statusEl.textContent = "Error: " + error.message;
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 1000,
+        }
+      );
+    }
+
+    startGPS();
+  </script>
+
+</body>
+</html>
